@@ -31,7 +31,8 @@ fn main() {
     // count the number of times the sum of measurements in this sliding window increases
     let count_window_3 = input_values
         .windows(4)
-        .filter(|w| w[1] + w[2] + w[3] > w[0] + w[1] + w[2])
+        //.filter(|w| w[1] + w[2] + w[3] > w[0] + w[1] + w[2])
+        .filter(|w| w[1..].iter().sum::<usize>() > w[..=2].iter().sum::<usize>())
         .count();
     println!(
         "Window 3: The number of depth increases is {}",
