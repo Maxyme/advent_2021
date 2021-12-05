@@ -6,7 +6,7 @@ fn main() {
     let input = fs::read_to_string("input.txt").expect("Error reading file");
     let input_values: Vec<usize> = input.lines().map(|i| i.parse().unwrap()).collect();
 
-    // Part 2:
+    // Part 1:
     // Find the number of times a depth measurement increases
 
     // Loop option
