@@ -1,117 +1,96 @@
 // Day 8: https://adventofcode.com/2021/day/8
 
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 
-fn get_patterns(input_commands: Vec<&str>) -> HashMap<Vec<char>, usize> {
+fn get_patterns(input_commands: Vec<&str>) -> HashMap<BTreeSet<char>, usize> {
     // Return a dict of what pattern matches to what value
+
+    // Convert to Vec of Hashsets
+    let input_sets: Vec<BTreeSet<char>> = input_commands
+        .iter()
+        .map(|x| BTreeSet::from_iter(x.chars()))
+        .collect();
+
+    let mut commands_values = HashMap::new();
+
     // Get unique len values first
-    let mut commands_values: HashMap<Vec<char>, usize> = HashMap::new();
-    let one = input_commands.iter().find(|x| x.len() == 2).expect("");
-    commands_values.insert(one.chars().sorted().collect(), 1);
+    let one = input_sets.iter().find(|x| x.len() == 2).unwrap();
+    commands_values.insert(one.clone(), 1);
 
-    let seven = input_commands.iter().find(|x| x.len() == 3).expect("");
-    commands_values.insert(seven.chars().sorted().collect(), 7);
+    let seven = input_sets.iter().find(|x| x.len() == 3).unwrap();
+    commands_values.insert(seven.clone(), 7);
 
-    let four = input_commands.iter().find(|x| x.len() == 4).expect("");
-    commands_values.insert(four.chars().sorted().collect(), 4);
+    let four = input_sets.iter().find(|x| x.len() == 4).unwrap();
+    commands_values.insert(four.clone(), 4);
 
-    let eight = input_commands.iter().find(|x| x.len() == 7).expect("");
-    commands_values.insert(eight.chars().sorted().collect(), 8);
+    let eight = input_sets.iter().find(|x| x.len() == 7).unwrap();
+    commands_values.insert(eight.clone(), 8);
 
     // 3 is a value of len 5 with all values in 1
-    let three = input_commands
+    let three = input_sets
         .iter()
-        .find(|x| x.len() == 5 && one.chars().all(|item| x.chars().contains(&item)))
-        .expect("");
+        .find(|x| x.len() == 5 && x.is_superset(one))
+        .unwrap();
+    commands_values.insert(three.clone(), 3);
 
-    let three_vec = three.chars().sorted().collect();
-
-    // 6 has len 6 and contais all values of 1
-    let six = input_commands
+    // 6 has len 6 and does not contains all values of 1
+    let six = input_sets
         .iter()
-        .find(|x| x.len() == 6 && !one.chars().all(|item| x.chars().contains(&item)))
-        .expect("");
+        .find(|x| x.len() == 6 && !x.is_superset(one))
+        .unwrap();
 
-    let six_vec = six.chars().sorted().collect();
+    commands_values.insert(six.clone(), 6);
 
     // Find the top right char by comparing eight and six
-    let chars: Vec<char> = eight.chars().collect();
-    let set_1: HashSet<char> = HashSet::from_iter(chars);
-    let chars_six: Vec<char> = six.chars().collect();
-    let set_six: HashSet<char> = HashSet::from_iter(chars_six);
-    let top_right_char: &char = set_1.difference(&set_six).next().expect("");
+    let top_right_char = eight.difference(six).next().unwrap();
 
     // two is the set containing the top right char
-    let two = input_commands
+    let two = input_sets
         .iter()
-        .find(|x| {
-            x.len() == 5
-                && x.contains(top_right_char.to_string().as_str())
-                && x.chars().sorted().collect::<Vec<char>>() != three_vec
-        })
-        .expect("");
-    let two_vec = two.chars().sorted().collect();
+        .find(|x| x.len() == 5 && x.contains(top_right_char) && x != &three)
+        .unwrap();
+    commands_values.insert(two.clone(), 2);
 
-    let five = input_commands
+    let five = input_sets
         .iter()
-        .find(|x| x.len() == 5 && !x.contains(top_right_char.to_string().as_str()))
-        .expect("");
-    let five_vec = five.chars().sorted().collect();
+        .find(|x| x.len() == 5 && x != &three && x != &two)
+        .unwrap();
+    commands_values.insert(five.clone(), 5);
 
-    // Find either the middle line or bottom left to diff 0 with 9
-    // Get the diff between 6 and 3
-    let chars_six: Vec<char> = six.chars().collect();
-    let set_six: HashSet<char> = HashSet::from_iter(chars_six);
+    // Find the bottom left char
+    let bottom_left_char = six.difference(five).next().unwrap();
 
-    // Then find the remaining char not in 5
-    let chars_five: Vec<char> = five.chars().collect();
-    let set_five: HashSet<char> = HashSet::from_iter(chars_five);
-    let bottom_left_char: &char = set_six.difference(&set_five).next().expect("");
-
-    let nine = input_commands
+    let nine = input_sets
         .iter()
-        .find(|x| x.len() == 6 && !x.contains(bottom_left_char.to_string().as_str()))
-        .expect("");
-    let nine_vec = nine.chars().sorted().collect();
+        .find(|x| x.len() == 6 && !x.contains(bottom_left_char))
+        .unwrap();
 
+    commands_values.insert(nine.clone(), 9);
     // Zero contains has len 6 and is not 6 nor 9
-    let zero = input_commands
+    let zero = input_sets
         .iter()
-        .find(|x| {
-            x.len() == 6
-                && x.contains(bottom_left_char.to_string().as_str())
-                && x.chars().sorted().collect::<Vec<char>>() != six_vec
-                && x.chars().sorted().collect::<Vec<char>>() != nine_vec
-        })
-        .expect("");
-    let zero_vec = zero.chars().sorted().collect();
+        .find(|x| x.len() == 6 && x != &six && x != &nine)
+        .unwrap();
 
-    // Todo, should raise if already exists
-    commands_values.insert(zero_vec, 0);
-
-    commands_values.insert(two_vec, 2);
-    commands_values.insert(three_vec, 3);
-
-    commands_values.insert(five_vec, 5);
-    commands_values.insert(six_vec, 6);
-
-
-    commands_values.insert(nine_vec, 9);
+    commands_values.insert(zero.clone(), 0);
     commands_values
 }
 
-fn get_output_value(output_commands: Vec<&str>, patterns: &HashMap<Vec<char>, usize>) -> usize {
+fn get_output_value(
+    output_commands: Vec<&str>,
+    patterns: &HashMap<BTreeSet<char>, usize>,
+) -> usize {
     // Compose a value from the pattern values
     let mut final_value = String::new();
     for command in output_commands {
-        let sorted_chars: Vec<char> = command.chars().sorted().collect();
-        let value = patterns.get(&sorted_chars).expect("");
-        let char_digit = char::from_digit(*value as u32, 10).expect("");
+        let sorted_chars = BTreeSet::from_iter(command.chars());
+        let value = patterns.get(&sorted_chars).unwrap();
+        let char_digit = char::from_digit(*value as u32, 10).unwrap();
         final_value.push(char_digit);
     }
-    final_value.parse().expect("")
+    final_value.parse().unwrap()
 }
 
 fn main() {
@@ -139,9 +118,9 @@ fn main() {
     // Part 2: find the only codes from the input and determine what the output values are
     let mut sum = 0;
     for (input, output) in commands {
-        let input_comands: Vec<&str> = input.split(char::is_whitespace).collect();
+        let input_comands = input.split(char::is_whitespace).collect();
         let patterns = get_patterns(input_comands);
-        let outputs_commands: Vec<&str> = output.split(char::is_whitespace).collect();
+        let outputs_commands = output.split(char::is_whitespace).collect();
         let output_value = get_output_value(outputs_commands, &patterns);
         sum += output_value;
     }
