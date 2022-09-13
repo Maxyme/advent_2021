@@ -6,8 +6,8 @@ use std::fs;
 
 const RADIX: u32 = 10;
 
+
 fn get_neighbors(index: &(usize, usize), heightmap: &Array2<usize>) -> Vec<Option<(usize, usize)>> {
-    //>(Option<(usize, usize)>, Option<(usize, usize)>, Option<(usize, usize)>, Option<(usize, usize)>) {
     // Check up/down/left/right to see that it's a local minimum
     let left = {
         if index.0 > 0 {
