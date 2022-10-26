@@ -9,8 +9,10 @@ fn main() {
     let mut all_coordinates: Vec<(usize, usize)> = Vec::new();
     let mut fold_instructions_section = false;
     let mut fold_instructions: Vec<(&str, usize)> = Vec::new();
+
     for line in input.lines() {
         if line.is_empty() {
+            // Switch from coords to fold instructions when encountering the empty line
             fold_instructions_section = true;
         } else if fold_instructions_section {
             // Add fold instructions, skipping "fold along " part
@@ -23,93 +25,76 @@ fn main() {
                 .map(|x| x.parse::<usize>().unwrap())
                 .collect_tuple()
                 .unwrap();
-            // todo: figure out why inverse?
-            all_coordinates.push((y, x))
+            all_coordinates.push((x, y))
         }
     }
 
     // Set coordinates in a 2d matrix
     let max_x = all_coordinates
         .iter()
-        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+        .max_by(|a, b| a.0.cmp(&b.0))
         .unwrap()
-        .0
-        + 1; //.filter(|(x,y)| )
+        .0;
     let max_y = all_coordinates
         .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| a.1.cmp(&b.1))
         .unwrap()
-        .1
-        + 1; //.filter(|(x,y)| )
+        .1;
 
-    // todo: use bool?
-    let mut board: Array2<usize> = Array2::zeros((max_x, max_y));
+    let mut board: Array2<u8> = Array2::zeros((max_x + 1, max_y + 1));
 
-    // Set the visible dots from the coordinates
+    // Set the visible dots (1s) from the coordinates
     for coord in all_coordinates {
-        let v = board.get_mut(coord).unwrap();
-        *v = 1;
+        let value = board.get_mut(coord).unwrap();
+        *value = 1;
     }
 
     // fold the board multiple times
     for (index, (fold_axis, fold_index)) in enumerate(&fold_instructions) {
-        // 1. get 2 matrices by slicing
+        // 1. get 2 matrices by slicing todo: use slice_mult
         let axis = {
             if *fold_axis == "x" {
-                1
+                ndarray::Axis(0)
             } else {
-                0
+                ndarray::Axis(1)
             }
         };
-        let slice = ndarray::Slice {
+
+        let indices_1 = ndarray::Slice {
             start: 0,
             end: Some(*fold_index as isize),
             step: 1,
         };
-        let sliced_board_part_1 = board.slice_axis(ndarray::Axis(axis), slice);
-        let slice_2 = ndarray::Slice {
+        let mut slice_1 = board.slice_axis(axis, indices_1).into_owned();
+
+        // reverse slice the second board (Note: step = -1)
+        let indices_2 = ndarray::Slice {
             start: (fold_index + 1) as isize,
             end: None,
-            step: 1,
+            step: -1,
         };
-        let mut sliced_board_part_2 = board.slice_axis(ndarray::Axis(axis), slice_2);
+        let slice_2 = board.slice_axis(axis, indices_2);
 
-        let mut sliced_board_part_1_owned = sliced_board_part_1.into_owned();
-
-        // reverse the second board and merge the boards
-        sliced_board_part_2.invert_axis(ndarray::Axis(axis));
-
-        // Merge the boards
-        for (coord, _) in sliced_board_part_1.indexed_iter() {
-            let value_1 = sliced_board_part_1_owned.get_mut(coord).unwrap();
-            let value_2 = sliced_board_part_2.get(coord).unwrap();
-            *value_1 = {
-                if *value_1 == 1 || *value_2 == 1 {
-                    1
-                } else {
-                    0
-                }
-            };
+        // Merge the boards by taking the max value of each (OR)
+        for (coord, value_1) in slice_1.indexed_iter_mut() {
+            let value_2 = slice_2.get(coord).unwrap();
+            *value_1 |= *value_2
         }
 
         // Part 1: count the dots after 1 fold
         if index == 0 {
-            let dots_visible = sliced_board_part_1_owned
-                .iter()
-                .filter(|&x| *x == 1)
-                .count();
+            let dots_visible = slice_1.iter().filter(|&&x| x == 1).count();
             println!("Part 1: There are {} dots visible", dots_visible);
         }
 
-        // Part 2: show the final instructions letter by letter (5 x 5 windows)
-        if index == fold_instructions.len() - 1 {
-            println!("The instructions are");
-            let x = sliced_board_part_1_owned.len_of(ndarray::Axis(1));
-            for slice_ind in (0..x).step_by(5) {
-                let slice = sliced_board_part_1_owned.slice(s![.., slice_ind..(slice_ind + 5)]);
-                println!("{:?}", slice);
-            }
-        }
-        board = sliced_board_part_1_owned;
+        board = slice_1;
+    }
+    // Part 2: show the final instructions letter by letter (5 x 5 windows)
+    println!("The instructions are:");
+    let end = board.len_of(ndarray::Axis(0));
+    for slice_ind in (0..end).step_by(5) {
+        let slice = board.slice(s![slice_ind..(slice_ind + 5), ..]);
+        // Transpose before printing as the x and y are interchanged from the example
+        println!("{}", slice.reversed_axes());
     }
 }
