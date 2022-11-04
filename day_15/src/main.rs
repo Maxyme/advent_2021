@@ -1,28 +1,97 @@
 use ndarray::{s, Array, Array1, Array2};
-use rustc_hash::FxHashSet;
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::collections::BinaryHeap;
 use std::fs;
 
 const RADIX: u32 = 10;
 
-/// Get index neighbors without overflowing the grid sides
-fn get_neighbors(index: &(usize, usize), width: usize, height: usize) -> Vec<(usize, usize)> {
-    // Get neighbors without diagonals
-    let mut neighbors: Vec<(usize, usize)> = Vec::new();
-    if index.0 > 1 {
-        neighbors.push((index.0 - 1, index.1));
+fn visit_node(
+    node: (usize, usize),
+    destinations_costs: &mut Array2<usize>,
+    queue: &mut BinaryHeap<(usize, usize)>,
+    visited: &mut Array2<usize>,
+    dist_cost: usize,
+) {
+    let previously_computed_cost = destinations_costs.get_mut(node).unwrap();
+    if dist_cost < *previously_computed_cost {
+        // New cost is smaller, update the previous known cost
+        *previously_computed_cost = dist_cost;
+        queue.push(node);
+    } else if visited[node] == 0 {
+        // If not visited then add to queue
+        queue.push(node);
     }
-    if index.0 < width - 1 {
-        neighbors.push((index.0 + 1, index.1));
+    visited[node] = 1;
+}
+
+fn get_destination_costs(
+    num_lines: usize,
+    line_len: usize,
+    grid: &mut Array2<usize>,
+) -> Array2<usize> {
+    let src: (usize, usize) = (0, 0);
+    let mut heap: BinaryHeap<(usize, usize)> = BinaryHeap::new();
+    // Add src to queue
+    heap.push(src);
+
+    // Create a map of minimum destination costs for each node (coord) in the array from 0,0
+    let mut destinations_costs: Array2<usize> = Array2::zeros(grid.dim());
+    destinations_costs.mapv_inplace(|_| usize::MAX);
+    // Set src known cost of 0
+    destinations_costs[src] = 0;
+
+    //let mut visited: FxHashSet<(usize, usize)> = FxHashSet::default();
+    let mut visited: Array2<usize> = Array2::zeros(grid.dim());
+    while let Some(node) = heap.pop() {
+        // Get the min cost to get to that node from the start
+        let node_dist_cost = destinations_costs[node];
+
+        // Check each possible pixel neighbor
+        if node.0 > 0 {
+            let left_neigh = (node.0 - 1, node.1);
+            let dist_cost = node_dist_cost + grid[left_neigh];
+            visit_node(
+                left_neigh,
+                &mut destinations_costs,
+                &mut heap,
+                &mut visited,
+                dist_cost,
+            );
+        }
+        if node.0 < line_len - 1 {
+            let right_neigh = (node.0 + 1, node.1);
+            let dist_cost = node_dist_cost + grid[right_neigh];
+            visit_node(
+                right_neigh,
+                &mut destinations_costs,
+                &mut heap,
+                &mut visited,
+                dist_cost,
+            );
+        }
+        if node.1 > 0 {
+            let up_neigh = (node.0, node.1 - 1);
+            let dist_cost = node_dist_cost + grid[up_neigh];
+            visit_node(
+                up_neigh,
+                &mut destinations_costs,
+                &mut heap,
+                &mut visited,
+                dist_cost,
+            );
+        }
+        if node.1 < num_lines - 1 {
+            let down_neigh = (node.0, node.1 + 1);
+            let dist_cost = node_dist_cost + grid[down_neigh];
+            visit_node(
+                down_neigh,
+                &mut destinations_costs,
+                &mut heap,
+                &mut visited,
+                dist_cost,
+            );
+        }
     }
-    if index.1 > 1 {
-        neighbors.push((index.0, index.1 - 1));
-    }
-    if index.1 < height - 1 {
-        neighbors.push((index.0, index.1 + 1));
-    }
-    neighbors
+    destinations_costs
 }
 
 fn main() {
@@ -42,44 +111,39 @@ fn main() {
         row_at_index.assign(&values);
     }
 
-    // Create a map of minimum destination costs for each node (coord) in the array from 0,0
-    let mut destinations_costs: Array2<usize> = Array2::zeros((num_lines, line_len));
-    destinations_costs.mapv_inplace(|_| usize::MAX);
+    let destinations_costs = get_destination_costs(num_lines, line_len, &mut grid);
 
-    // First node is a known cost of 0
-    let src: (usize, usize) = (0, 0);
-    let src_cost = destinations_costs.get_mut(src).unwrap();
-    *src_cost = 0;
+    let destination = (grid.dim().0 - 1, grid.dim().1 - 1);
+    let destination_min_cost = destinations_costs.get(destination).unwrap();
+    println!("Part 1: {:?}", destination_min_cost);
 
-    //let mut visited : FnvHashSet<(usize, usize)> = FnvHashSet::default();
-    let mut visited: FxHashSet<(u8, u8)> = FxHashSet::default();
-    let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
-    // Add Src to queue and set cost
-    queue.push_back(src);
-    let v = destinations_costs.get_mut(src).unwrap();
-    *v = 0;
-
-    while let Some(node) = queue.pop_back() {
-        // Get the min cost to get to that node from the start
-        let node_dist_cost = *destinations_costs.get(node).unwrap();
-        let neighs = get_neighbors(&node, num_lines, line_len);
-        for neigh_node in neighs {
-            let new_neigh_dist_cost = node_dist_cost + grid[neigh_node]; //).unwrap();
-            let previously_computed_cost = destinations_costs.get_mut(neigh_node).unwrap();
-            if new_neigh_dist_cost < *previously_computed_cost {
-                // new cost is smaller, update the previous known cost
-                *previously_computed_cost = new_neigh_dist_cost;
-                queue.push_back(neigh_node);
-            } else if !visited.contains(&(neigh_node.0 as u8, neigh_node.1 as u8)) {
-                // If not visited then add to queue
-                queue.push_back(neigh_node);
-            };
-            // Add to visited
-            visited.insert((neigh_node.0 as u8, neigh_node.1 as u8));
+    // Part 2: Extend the grid to make a 5x5 with values += 1
+    let mut new_grid: Array2<usize> = Array2::default((num_lines * 5, line_len * 5));
+    for j in 0..5 {
+        for i in 0..5 {
+            let slice = s![
+                i * line_len..(i + 1) * line_len,
+                j * num_lines..(j + 1) * num_lines
+            ];
+            let mut matrix = new_grid.slice_mut(slice);
+            matrix.assign(&grid.clone());
+            matrix.mapv_inplace(|x| {
+                let sum = x + i + j;
+                // Wrap around to 1 when sum >= 10
+                if sum < 10 {
+                    sum
+                } else {
+                    (sum % 10) + 1
+                }
+            });
         }
     }
 
-    let destination = (num_lines - 1, line_len - 1);
-    let destination_min_cost = destinations_costs.get(destination).unwrap();
-    println!("{:?}", destination_min_cost);
+    let extended_destination = (new_grid.dim().0 - 1, new_grid.dim().1 - 1);
+    let extended_destinations_costs =
+        get_destination_costs(num_lines * 5, line_len * 5, &mut new_grid);
+    let destination_min_cost = extended_destinations_costs
+        .get(extended_destination)
+        .unwrap();
+    println!("Part 2: {:?}", destination_min_cost);
 }
