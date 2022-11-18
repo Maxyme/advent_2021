@@ -1,78 +1,45 @@
-use std::collections::VecDeque;
 use itertools::Itertools;
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::collections::VecDeque;
 use std::fs;
 
-
-fn explode(snail_number: &str) -> String {
-    let mut left = String::new();
-    let mut last_number_index: usize = 0;
-    let mut next_number_index: usize = 0;
-
-    let mut right_pair: usize = 0;
-    let mut left_pair: usize = 0;
-
-
-    let mut chars = snail_number.chars();
-    let mut index = 0;
-    for char in chars {
-        left.push(char);
-        index += 1;
-    }
-
-    let middle = "a".to_string();
-    let mut right = &snail_number[..index];
-    // increment number on right
-    let next_number = &right[next_number_index..next_number_index+1].parse::<usize>().unwrap();
-    let new_next_number = next_number + right_pair;
-    //right[next_number_index] = right[next_number_index]
-
-    format!("{},{},{}", left, middle, right)
-}
-
-/// Reduce snailfish number by exploding nested pairs and/or splitting regular numbers
-fn reduce(snail_number: &str) -> String {
-    let mut left = String::new();
-
-    let mut chars = snail_number.chars();
-    let mut index = 0;
-    for char in chars {
-        left.push(char);
-        index += 1;
-    }
-    let middle = "a".to_string();
-    //new_string
-    let right = &snail_number[..index];
-    format!("{},{},{}", left, middle, right)
+lazy_static! {
+    static ref FIRST_NUM_RE: Regex = Regex::new(r"^\D*(\d+)").unwrap();
 }
 
 fn main() {
-    let input = fs::read_to_string("example.txt").expect("Error reading file");
+    let input = fs::read_to_string("input.txt").expect("Error reading file");
 
     // Create a vec of instructions
     let mut lines = input.lines();
-    let mut sum : String = lines.next().unwrap().to_string();
+    let mut sum: String = lines.next().unwrap().to_string();
     for line in lines {
         // Add the inputs together to form a new snailfish number (Pairs of pairs)
-        let addition = format!("[{},{}]", sum, line);
-        println!("s {}", addition);
-
+        let addition = add_numbers(&sum, line);
         // Reduce the input and set as the new sum
-        sum = reduce_number(addition.as_str());
-        println!("Sum {}", sum);
+        sum = reduce_number(&addition);
     }
-    println!("Sum {}", sum);
-    // To reduce follow these rules, until none of these actions applies
-    // If any pair is nested inside four pairs, the leftmost such pair explodes.
-    // If any regular number is 10 or greater, the leftmost such regular number splits.
 
-    // The magnitude of a pair is 3 times the magnitude of its left element plus 2 times the magnitude of its right element
-    // Magnitude calculations are recursive
-    let sum_magnitude = 0;
+    let sum_magnitude = get_magnitude(&sum);
     println!("Part 1: {}", sum_magnitude);
 
+    // Part 2: what is the largest magnitude from the sum of any 2 numbers
+    let mut biggest_magnitude = 0;
+    for pair in input.lines().permutations(2) {
+        let addition = add_numbers(pair[0], pair[1]);
+        let reduction = reduce_number(&addition);
+        let sum_magnitude = get_magnitude(&reduction);
+        if sum_magnitude > biggest_magnitude {
+            biggest_magnitude = sum_magnitude;
+        }
+    }
+
+    println!("Part 2: {}", biggest_magnitude);
 }
 
 fn get_nested_pair(s: &str) -> Option<(usize, usize)> {
+    // Note, could be replaced by a regex
     let mut open_brackets_queue = VecDeque::new();
     let chars = s.chars();
     for (index, char) in chars.enumerate() {
@@ -91,58 +58,55 @@ fn get_nested_pair(s: &str) -> Option<(usize, usize)> {
     None
 }
 
-// Get index of the last number in str
-// Note, can be inlined
-fn get_last_number_index(s: &str) -> Option<usize> {
-    let mut last_number_index = None;
-    for (index, char) in s.chars().enumerate() {
-        if char.is_alphanumeric() {
-            last_number_index = Some(index);
-        }
-    };
-    last_number_index
-}
-
-fn get_first_number_index(s: &str) -> Option<usize> {
-    for (index, char) in s.chars().enumerate() {
-        if char.is_alphanumeric() {
-            return Some(index);
-        }
-    };
-    None
+fn add_numbers(s_1: &str, s_2: &str) -> String {
+    format!("[{},{}]", s_1, s_2)
 }
 
 fn explode_number(s: &str, start: usize, end: usize) -> String {
     // Get the pair as usize
-    let (left, right) = s[start + 1..end].split(',').map(|x| x.parse::<usize>().unwrap()).collect_tuple().unwrap();
+    let (left, right) = s[start + 1..end]
+        .split(',')
+        .map(|x| x.parse::<usize>().unwrap())
+        .collect_tuple()
+        .unwrap();
 
     // Find the number left and right of the pair and update them
-    // Todo: can this number be > 10? - 2 chars? then regex..?
+    // Todo replace by a last number regex
     let mut left_side = s[..start].to_string();
-    if let Some(left_number_index) = get_last_number_index(&left_side) {
-        // Update the number
-        let old_number = left_side.get(left_number_index..left_number_index + 1).unwrap().parse::<usize>().unwrap();
+    let reversed_left = left_side.chars().rev().collect::<String>();
+    if let Some(cap) = FIRST_NUM_RE.captures(&reversed_left) {
+        let item = cap.get(1).unwrap();
+        let end = left_side.len() - item.start();
+        let start = left_side.len() - item.end();
+        let old_number = &left_side[start..end];
+        let old_number = old_number.parse::<usize>().unwrap();
+
         let new_number = left + old_number;
-        left_side.replace_range(left_number_index..left_number_index + 1, &new_number.to_string());
+        left_side.replace_range(start..end, &new_number.to_string());
     }
 
     let mut right_side = s[end + 1..].to_string();
-    if let Some(right_number_index) = get_first_number_index(&right_side) {
-        let old_number = right_side.get(right_number_index..right_number_index + 1).unwrap().parse::<usize>().unwrap();
+    if let Some(cap) = FIRST_NUM_RE.captures(&right_side) {
+        let item = cap.get(1).unwrap();
+        let old_number = right_side[item.start()..item.end()]
+            .parse::<usize>()
+            .unwrap();
+
         let new_number = right + old_number;
-        right_side.replace_range(right_number_index..right_number_index + 1, &new_number.to_string());
+        right_side.replace_range(item.start()..item.end(), &new_number.to_string());
     }
+
     format!("{}{}{}", left_side, "0", right_side)
 }
 
 fn get_number_to_split(s: &str) -> Option<usize> {
     // Check if there a number with 2 digits
     let inter = s.chars().collect::<Vec<char>>();
-    let mut windows = inter.windows(2);
+    let windows = inter.windows(2);
 
     for (index, window) in windows.enumerate() {
         if window.iter().all(|x| x.is_numeric()) {
-            return Some(index)
+            return Some(index);
         }
     }
     None
@@ -150,28 +114,61 @@ fn get_number_to_split(s: &str) -> Option<usize> {
 
 fn split_number(s: &str, index: usize) -> String {
     // Get the number at the index
-    let number = s.get(index..index + 2).unwrap().parse::<usize>().unwrap();
-    let right = (number as f64 / 2.0).ceil();
-    let left = (number as f64 / 2.0).floor();
+    let number = s[index..index + 2].parse::<f64>().unwrap();
+    let right = (number / 2.0).ceil();
+    let left = (number / 2.0).floor();
     format!("{}[{},{}]{}", &s[..index], left, right, &s[index + 2..])
-
 }
 
+/// To reduce follow these rules, until none of these actions applies
+/// If any pair is nested inside four pairs, the leftmost such pair explodes.
+/// If any regular number is 10 or greater, the leftmost such regular number splits.
 fn reduce_number(s: &str) -> String {
-    // Check if a number needs to be exploded
+    // First: check if a number needs to be exploded
     if let Some(pair) = get_nested_pair(s) {
         // snail number contains a 4x nested pair
         let exploded = explode_number(s, pair.0, pair.1);
         return reduce_number(&exploded);
     }
 
-    // Check if a number needs to be split
+    // Second: check if a number needs to be split
     if let Some(split_index) = get_number_to_split(s) {
         let split = split_number(s, split_index);
         return reduce_number(&split);
     }
-
     s.to_string()
+}
+
+/// The magnitude of a pair is 3 times the magnitude of its left element plus 2 times the magnitude of its right element
+/// Magnitude calculations are recursive
+fn get_magnitude(s: &str) -> usize {
+    if s.len() == 1 {
+        return s[..1].parse::<usize>().unwrap();
+    }
+
+    // Split into left and right and if they are both numbers, return early
+    // else return recursively
+    let without_external_brackets = &s[1..s.len() - 1];
+
+    // Todo: replace with regex?
+    let mut open_brackets_queue = VecDeque::new();
+    let mut split_index = 0;
+    for (index, c) in without_external_brackets.chars().enumerate() {
+        if c == ',' && open_brackets_queue.is_empty() {
+            split_index = index;
+            break;
+        }
+        if c == '[' {
+            open_brackets_queue.push_back(c);
+        } else if c == ']' {
+            open_brackets_queue.pop_back();
+        }
+    }
+
+    let left = &without_external_brackets[..split_index];
+    let right = &without_external_brackets[split_index + 1..];
+
+    get_magnitude(left) * 3 + get_magnitude(right) * 2
 }
 
 #[cfg(test)]
@@ -211,11 +208,10 @@ mod tests {
         assert_eq!(split, "[[[[0,7],4],[[7,8],[0,13]]],[1,1]]");
     }
 
-    // [[[[0,[4,5]],[0,0]],[[[4,5],[2,6]],[9,5]]],[7,[[[3,7],[4,3]],[[6,3],[8,8]]]]]
     #[test]
-    fn test_overflow() {
-        let input = "[[[[0,7],4],[15,[0,13]]],[1,1]]";
-        let split = split_number(input, 13);
-        assert_eq!(split, "[[[[0,7],4],[[7,8],[0,13]]],[1,1]]");
+    fn test_get_magnitude() {
+        let input = "[[[[4,0],[5,4]],[[7,7],[6,0]]],[[8,[7,7]],[[7,9],[5,0]]]]";
+        let magnitude = get_magnitude(input);
+        assert_eq!(magnitude, 3488)
     }
 }
